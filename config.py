@@ -9,4 +9,4 @@ MYSQL_CONFIG = {
     "autocommit": False,
 }
 MYSQL_HOST = MYSQL_CONFIG.get("host", "desconocido")
-SECRET_KEY = os.environ.get("COSTOS_SECRET_KEY", "cambiar-esto-en-produccion")
+SECRET_KEY = os.environ.get("COSTOS_SECRET_KEY", "pruebas-up-talp-costos2025")
