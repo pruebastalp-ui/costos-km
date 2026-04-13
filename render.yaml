@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: costos-km
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: COSTOS_SECRET_KEY
+        generateValue: true
+      - key: COSTOS_DB_HOST
+        sync: false
+      - key: COSTOS_DB_PORT
+        value: "3306"
+      - key: COSTOS_DB_USER
+        sync: false
+      - key: COSTOS_DB_PASSWORD
+        sync: false
+      - key: COSTOS_DB_NAME
+        sync: false
