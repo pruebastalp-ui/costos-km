@@ -1,17 +1,27 @@
 from collections import defaultdict
 import copy
 from io import BytesIO
-from flask import Flask, render_template, request, redirect, url_for, flash,  send_file
+from functools import wraps
+from flask import Flask, render_template, request, redirect, url_for, flash,  send_file, session
 from config import SECRET_KEY
 from config import MYSQL_HOST
 from db import close_db, query_all, query_one, execute, executemany, commit, rollback
 from services.calculator import calculate_results
 from openpyxl import Workbook
 from openpyxl.styles import Font
+from werkzeug.security import check_password_hash
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
 app.teardown_appcontext(close_db)
+
+def login_required(view_func):
+    @wraps(view_func)
+    def wrapped_view(*args, **kwargs):
+        if not session.get("user_id"):
+            return redirect(url_for("login"))
+        return view_func(*args, **kwargs)
+    return wrapped_view
 
 # agregue desde aca
 EMPRESA_ORDER = [
@@ -40,6 +50,44 @@ FORMAT_4_DEC = {
 
 # hasta aca
 
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if session.get("user_id"):
+        return redirect(url_for("index"))
+
+    if request.method == "POST":
+        usuario = request.form.get("usuario", "").strip()
+        password = request.form.get("password", "")
+
+        user = query_one(
+            """
+            SELECT *
+            FROM usuarios
+            WHERE usuario = %s
+              AND activo = 1
+            LIMIT 1
+            """,
+            (usuario,)
+        )
+
+        if not user or not check_password_hash(user["password_hash"], password):
+            flash("Usuario o contraseña incorrectos.", "error")
+            return render_template("login.html")
+
+        session["user_id"] = user["id"]
+        session["username"] = user["usuario"]
+        session["nombre"] = user.get("nombre") or user["usuario"]
+
+        return redirect(url_for("index"))
+
+    return render_template("login.html")
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    flash("Sesión cerrada.", "ok")
+    return redirect(url_for("login"))
 
 @app.context_processor
 def inject_globals():
@@ -262,6 +310,7 @@ def calculate_results_isolated(base_params, merged_params, baseline_results, gro
 
 
 @app.route("/")
+@login_required
 def index():
     escenarios = query_all(
         """
@@ -344,6 +393,7 @@ def index():
     return render_template("index.html",escenarios=escenarios,groups=groups,mysql_host=MYSQL_HOST)
     
 @app.route("/escenario/nuevo", methods=["POST"])
+@login_required
 def nuevo_escenario():
     nombre = request.form.get("nombre", "").strip()
     descripcion = request.form.get("descripcion", "").strip() or None
@@ -386,6 +436,7 @@ def nuevo_escenario():
 
 
 @app.route("/escenario/<int:scenario_id>/eliminar", methods=["POST"])
+@login_required
 def eliminar_escenario(scenario_id):
     esc = query_one("SELECT * FROM escenarios WHERE id = %s", (scenario_id,))
 
@@ -412,6 +463,7 @@ def eliminar_escenario(scenario_id):
 
 
 @app.route("/escenario/<int:scenario_id>", methods=["GET", "POST"])
+@login_required
 def escenario(scenario_id):
     esc = query_one(
         "SELECT * FROM escenarios WHERE id = %s AND activo = 1",
@@ -537,6 +589,7 @@ def escenario(scenario_id):
     )
 
 @app.route("/escenario/<int:scenario_id>/exportar_excel")
+@login_required
 def exportar_excel(scenario_id):
     esc = query_one(
         "SELECT * FROM escenarios WHERE id=%s AND activo=1",
