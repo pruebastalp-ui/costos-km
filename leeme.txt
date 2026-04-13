@@ -1,0 +1,38 @@
+Archivos:
+
+Proyecto ZIP
+
+Esta versión incluye:
+
+estructura de tablas MySQL (schema.sql)
+importador desde tu Excel (import_excel.py)
+app web (app.py)
+motor de cálculo MVP
+manejo por grupos tarifarios: DF, SGI, SGI KM, SGII, INP, UPA, UPA KM, UMA 1, UMA 2
+
+Importante: en esta primera etapa el motor recalcula directamente:
+
+combustible
+lubricantes
+neumáticos
+engrase y lavado
+salarios del personal
+seguros del personal
+subtotal
+gastos generales
+gerenciamiento
+costo total por km
+IPK
+tarifa media
+
+El resto de los rubros queda con el valor base importado desde el Excel, así ya podés probar la estructura, escenarios y persistencia en MySQL sin esperar a tener todo el modelo completo.
+
+Orden sugerido para probarlo:
+
+crear la base con schema.sql
+configurar usuario/clave de MySQL
+correr python import_excel.py "GO - Costos Diciembre 2025.xlsx"
+ejecutar python app.py
+
+Si querés, en el próximo paso te preparo la versión 2 ampliando el cálculo exacto de:
+reparación y mantenimiento, depreciación, seguro del vehículo, máquinas/inmuebles, impuestos y saldo técnico IVA.

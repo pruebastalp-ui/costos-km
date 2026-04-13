@@ -1,0 +1,299 @@
+{% extends "base.html" %}
+{% block content %}
+
+<style>
+  .changed-input {
+    background: #fff3cd;
+    border: 2px solid #f0ad4e;
+    font-weight: 600;
+  }
+  .changed-result-up {
+    background: #fdeaea;
+    color: #a94442;
+    font-weight: 700;
+  }
+  .changed-result-down {
+    background: #eaf7ee;
+    color: #256c3d;
+    font-weight: 700;
+  }
+  .same-result {
+    background: #f8f9fa;
+  }
+  .mini-note {
+    font-size: 12px;
+    color: #666;
+    margin-top: 3px;
+    line-height: 1.2;
+  }
+  .legend {
+    display: flex;
+    gap: 18px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 8px;
+    font-size: 13px;
+  }
+  .legend-box {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 1px solid #999;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  .legend-input { background: #fff3cd; border-color: #f0ad4e; }
+  .legend-up { background: #fdeaea; border-color: #d9a3a3; }
+  .legend-down { background: #eaf7ee; border-color: #9cc7aa; }
+
+  .impact-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 16px;
+  }
+
+  .impact-card {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 12px;
+    background: #fff;
+  }
+
+  .impact-card h4 {
+    margin-top: 0;
+    margin-bottom: 10px;
+  }
+
+  .impact-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+
+  .impact-table th,
+  .impact-table td {
+    border-bottom: 1px solid #eee;
+    padding: 6px 4px;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .impact-up {
+    color: #a94442;
+    font-weight: 700;
+  }
+
+  .impact-down {
+    color: #256c3d;
+    font-weight: 700;
+  }
+</style>
+
+<section class="card">
+  <h2>{{ esc.nombre }}</h2>
+  <p>{{ esc.descripcion or "" }}</p>
+  <p class="muted">
+    La versión {{ VERSION_TIPO }} recalcula los rubros configurados del modelo y conserva como base los valores importados desde Excel para los restantes.
+  </p>
+  <div class="legend">
+    <span><span class="legend-box legend-input"></span> Parámetro modificado</span>
+    <span><span class="legend-box legend-up"></span> Resultado mayor al base</span>
+    <span><span class="legend-box legend-down"></span> Resultado menor al base</span>
+  </div>
+</section>
+
+<form method="post">
+  {% for module_name, params in modules.items() %}
+  <section class="card">
+    <h3>{{ module_name|replace('_',' ')|title }}</h3>
+    <table class="table table-input">
+      <thead>
+        <tr>
+          <th>Parámetro</th>
+          {% for g in groups %}
+          <th>{{ g.codigo }}</th>
+          {% endfor %}
+          <th>Unidad</th>
+        </tr>
+      </thead>
+      <tbody>
+    {% for code, item in params.items() %}
+<tr>
+  <td>{{ item["label"] }}</td>
+  {% for g in groups %}
+    {% set current = item["values"][g.codigo] if g.codigo in item["values"] else '' %}
+    {% set base = item["base_values"][g.codigo] if g.codigo in item["base_values"] else '' %}
+    {% set changed = item["changed"][g.codigo] if g.codigo in item["changed"] else false %}
+    {% set decimals = item["display_decimals"] if "display_decimals" in item else 2 %}
+    {% set step_value = "any" %}
+
+    {% if current != '' %}
+       {% if decimals == 0 %}
+          {% set current_display = '%.0f'|format(current) %}
+       {% elif decimals == 4 %}
+          {% set current_display = '%.4f'|format(current) %}
+       {% else %}
+          {% set current_display = '%.2f'|format(current) %}
+       {% endif %}
+    {% else %}
+      {% set current_display = '' %}
+    {% endif %}
+
+    {% if base != '' %}
+      {% if decimals == 0 %}
+        {% set base_display = '%.0f'|format(base) %}
+      {% elif decimals == 4 %}
+        {% set base_display = '%.4f'|format(base) %}
+      {% else %}
+        {% set base_display = '%.2f'|format(base) %}
+      {% endif %}
+    {% else %}
+      {% set base_display = '' %}
+    {% endif %}
+
+    {% if base != '' %}
+      {% if decimals == 0 %}
+        {% set base_display = '%.0f'|format(base) %}
+      {% elif decimals == 4 %}
+        {% set base_display = '%.4f'|format(base) %}
+      {% else %}
+        {% set base_display = '%.2f'|format(base) %}
+      {% endif %}
+    {% else %}
+      {% set base_display = '' %}
+    {% endif %}
+  <td>
+    <input
+      type="number"
+      step="{{ step_value }}"
+      name="{{ code }}__{{ g.codigo }}"
+      value="{{ current }}"
+      class="{% if changed %}changed-input{% endif %}"
+      title="Base: {{ base_display }}"
+    >
+    {% if changed %}
+      <div class="mini-note">Base: {{ base_display }}</div>
+    {% endif %}
+  </td>
+  {% endfor %}
+  <td>{{ item["unit"] or "" }}</td>
+</tr>
+{% endfor %}    
+      </tbody>
+    </table>
+  </section>
+  {% endfor %}
+
+  <div class="actions">
+    <button type="submit">Guardar y recalcular</button>
+  </div>
+</form>
+
+<section class="card">
+  <h3>Resultados</h3>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Rubro</th>
+        {% for g in groups %}
+        <th>{{ g.codigo }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for code, item in ordered_results %}
+      <tr>
+        <td>{{ item["label"] }}</td>
+        {% for g in groups %}
+          {% set val = item["values"][g.codigo] if g.codigo in item["values"] else 0 %}
+          {% set base = item["base_values"][g.codigo] if g.codigo in item["base_values"] else 0 %}
+          {% set delta = val - base %}
+          {% set pct = ((delta / base) * 100) if base != 0 else 0 %}
+
+          {# tolerancia para diferencias despreciables por redondeo #}
+          {% set small_delta = (delta > -0.0025 and delta < 0.0025) %}
+          {% set small_pct = (pct >= -0.01 and pct <= 0.01) %}
+          {% set changed = not (small_delta and small_pct) %}
+
+          {% set class_name = "same-result" %}
+          {% if changed and delta > 0 %}
+            {% set class_name = "changed-result-up" %}
+          {% elif changed and delta < 0 %}
+            {% set class_name = "changed-result-down" %}
+          {% endif %}
+
+        <td
+          class="{{ class_name }}"
+          title="Base: {{ '%.4f'|format(base) }} | Delta: {{ '%.4f'|format(delta) }} | Impacto: {{ '%+.2f'|format(pct) }}%"
+        >
+          <div>{{ '%.4f'|format(val) }}</div>
+          {% if changed %}
+            <div class="mini-note">
+              Base: {{ '%.4f'|format(base) }}<br>
+              Δ {{ '%+.4f'|format(delta) }}<br>
+              Impacto: {{ '%+.2f'|format(pct) }}%
+            </div>
+          {% endif %}
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="card">
+  <h3>Mayores impactos por rubro</h3>
+  <div class="impact-grid">
+    {% for g in groups %}
+    <div class="impact-card">
+      <h4>{{ g.codigo }}</h4>
+      {% set rows = impact_summary[g.codigo] if g.codigo in impact_summary else [] %}
+      {% set ns = namespace(shown=0) %}
+
+      {% if rows %}
+      <table class="impact-table">
+        <thead>
+          <tr>
+            <th>Rubro</th>
+            <th>Δ</th>
+            <th>%</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            {% set delta = row["delta"] %}
+            {% set pct = row["pct"] %}
+            {% set small_delta = (delta > -0.0025 and delta < 0.0025) %}
+            {% set small_pct = (pct >= -0.01 and pct <= 0.01) %}
+            {% set changed = not (small_delta and small_pct) %}
+
+            {% if changed %}
+              {% set ns.shown = ns.shown + 1 %}
+              <tr>
+                <td>{{ row["label"] }}</td>
+                <td class="{% if row['delta'] >= 0 %}impact-up{% else %}impact-down{% endif %}">
+                  {{ '%+.4f'|format(row["delta"]) }}
+                </td>
+                <td class="{% if row['pct'] >= 0 %}impact-up{% else %}impact-down{% endif %}">
+                  {{ '%+.2f'|format(row["pct"]) }}%
+                </td>
+              </tr>
+            {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+
+      {% if ns.shown == 0 %}
+      <p class="muted">No hay diferencias relevantes respecto de la base.</p>
+      {% endif %}
+
+      {% else %}
+      <p class="muted">No hay diferencias relevantes respecto de la base.</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</section>
+
+{% endblock %}

@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="position:absolute; top:10px; right:20px; font-size:12px; color:#777;">
+  MySQL: {{ mysql_host }}
+</div>
+<style>
+  .page-header {
+    margin-bottom: 20px;
+  }
+
+  .muted {
+    color: #666;
+  }
+
+  .grid-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+    margin-top: 18px;
+  }
+
+  .card {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    padding: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  .kpi-card-up {
+  background: #fdeaea;
+  border-color: #e5bcbc;
+}
+
+.kpi-card-down {
+  background: #eaf7ee;
+  border-color: #b7d7c0;
+}
+
+.kpi-delta-up {
+  color: #a94442;
+  font-weight: 700;
+}
+
+.kpi-delta-down {
+  color: #256c3d;
+  font-weight: 700;
+}
+
+  .scenario-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+
+  .scenario-title {
+    margin: 0;
+    font-size: 20px;
+  }
+
+  .scenario-title a {
+    text-decoration: none;
+    color: inherit;
+  }
+
+  .scenario-title a:hover {
+    text-decoration: underline;
+  }
+
+  .badge-base {
+    display: inline-block;
+    font-size: 12px;
+    padding: 4px 10px;
+    background: #e8f4ff;
+    border: 1px solid #9cc3e6;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .form-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .form-row label {
+    font-weight: 600;
+  }
+
+  .form-row select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #bbb;
+  border-radius: 8px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+  .form-row input,
+  .form-row textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #bbb;
+    border-radius: 8px;
+    font-size: 14px;
+    box-sizing: border-box;
+  }
+
+  .form-row textarea {
+    min-height: 90px;
+    resize: vertical;
+  }
+
+  .actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+  }
+
+  .btn {
+    appearance: none;
+    border: 1px solid #999;
+    background: #f5f5f5;
+    color: #222;
+    padding: 9px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    text-decoration: none;
+    display: inline-block;
+  }
+
+  .btn:hover {
+    filter: brightness(0.98);
+  }
+
+  .btn-primary {
+    background: #0d6efd;
+    color: white;
+    border-color: #0d6efd;
+  }
+
+  .btn-danger {
+    background: #b00020;
+    color: white;
+    border-color: #b00020;
+  }
+
+  .empty-state {
+    padding: 18px;
+    border: 1px dashed #bbb;
+    border-radius: 10px;
+    background: #fafafa;
+    color: #555;
+    margin-top: 16px;
+  }
+
+  .scenario-meta {
+    font-size: 13px;
+    color: #666;
+    margin-top: 8px;
+  }
+</style>
+
+<section class="card page-header">
+  <h1>Modelo de costos - {{ VERSION_TIPO }}</h1>
+  <p class="muted">
+    Esta versión {{ VERSION_TIPO }} permite crear escenarios, modificar parámetros por grupo tarifario
+    y comparar sus resultados con los valores base importados desde Excel.
+  </p>
+</section>
+
+<section class="card">
+  <h2>Nuevo escenario</h2>
+  <form method="post" action="{{ url_for('nuevo_escenario') }}">
+    <div class="form-grid">
+      <div class="form-row">
+        <label for="nombre">Nombre</label>
+        <input
+          type="text"
+          id="nombre"
+          name="nombre"
+          placeholder="Ej.: Aumento combustible enero"
+          required
+        >
+      </div>
+
+      <div class="form-row">
+        <label for="descripcion">Descripción</label>
+        <textarea
+          id="descripcion"
+          name="descripcion"
+          placeholder="Detalle breve del escenario"
+        ></textarea>
+      </div>
+      <div class="form-row">
+        <label for="grupo_codigo">Grupo tarifario</label>
+        <select id="grupo_codigo" name="grupo_codigo" required>
+          <option value="">Seleccionar...</option>
+          {% for g in groups %}
+            <option value="{{ g.codigo }}">{{ g.codigo }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+    </div>
+
+    <div class="actions">
+      <button type="submit" class="btn btn-primary">Crear escenario</button>
+    </div>
+  </form>
+</section>
+
+<section class="card">
+  <h2>Escenarios activos</h2>
+
+  {% if escenarios %}
+    <div class="grid-cards">
+      {% for esc in escenarios %}
+      <div class="card">
+        <div class="scenario-header">
+          <h3 class="scenario-title">
+            <a href="{{ url_for('escenario', scenario_id=esc.id) }}">{{ esc.nombre }}</a>
+          </h3>
+
+          {% if esc.es_base %}
+            <span class="badge-base">Base</span>
+          {% endif %}
+        </div>
+
+      <p>{{ esc.descripcion or "Sin descripción." }}</p>
+
+      <p><strong>Grupo tarifario:</strong> {{ esc.grupo_codigo or "-" }}</p>
+
+       {% if esc.costo_total_km_sin_iva_grupo is not none %}
+          {% set costo_sin_imp = esc.costo_total_sin_imp_grupo if esc.costo_total_sin_imp_grupo is not none else 0 %}
+          {% set costo_sin_imp_base = esc.costo_total_sin_imp_base_grupo if esc.costo_total_sin_imp_base_grupo is not none else 0 %}
+          {% set delta_costo_sin_imp = costo_sin_imp - costo_sin_imp_base %}
+          {% set kpi_card_class = "kpi-card-down" if delta_costo_sin_imp <= 0 else "kpi-card-up" %}
+          {% set kpi_delta_class = "kpi-delta-down" if delta_costo_sin_imp <= 0 else "kpi-delta-up" %}
+
+          <div class="scenario-kpis {{ kpi_card_class }}"
+              style="margin-top:10px; padding:10px; border:1px solid #e5e5e5; border-radius:8px;">
+
+            <div style="font-size:13px; color:#666; margin-bottom:6px;">
+              Indicadores (grupo {{ esc.grupo_codigo }})
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr; gap:6px; font-size:14px;">
+
+              <div>
+                <strong>Costo total por km sin IVA:</strong>
+                {{ '%.2f'|format(esc.costo_total_km_sin_iva_grupo) }}
+              </div>
+
+              <div>
+                <strong>Tarifa media sin compensación:</strong>
+                {{ '%.2f'|format(esc.tarifa_media_grupo) }}
+              </div>
+
+              <div>
+                <strong>IPK:</strong>
+                {{ '%.2f'|format(esc.ipk_grupo) }}
+              </div>
+
+              <div class="{{ kpi_delta_class }}">
+                <strong>Δ Costo total sin impuestos:</strong>
+                {{ '%+.2f'|format(delta_costo_sin_imp) }}
+              </div>
+
+            </div>
+          </div>
+        {% endif %}
+
+        <div class="scenario-meta">
+          ID: {{ esc.id }}
+          {% if esc.creado_en %}
+            | Creado: {{ esc.creado_en }}
+          {% endif %}
+        </div>  
+
+        <div class="actions">
+          <a class="btn" href="{{ url_for('escenario', scenario_id=esc.id) }}">Abrir</a>
+
+          {% if not esc.es_base %}
+          <form
+            method="post"
+            action="{{ url_for('eliminar_escenario', scenario_id=esc.id) }}"
+            onsubmit="return confirm('¿Eliminar este escenario?');"
+            style="display:inline;"
+          >
+            <button type="submit" class="btn btn-danger">Eliminar</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="empty-state">
+      No hay escenarios activos todavía.
+    </div>
+  {% endif %}
+</section>
+
+{% endblock %}
