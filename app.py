@@ -50,6 +50,20 @@ FORMAT_4_DEC = {
 
 # hasta aca
 
+def next_period(anio, mes):
+    if not anio or not mes:
+        return None, None
+    anio = int(anio)
+    mes = int(mes)
+    if mes == 12:
+        return anio + 1, 1
+    return anio, mes + 1
+
+
+def build_monthly_name(empresa_nombre, anio, mes):
+    empresa = (empresa_nombre or "Escenario").strip()
+    return f"{empresa} - {anio:04d}-{mes:02d}"
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if session.get("user_id"):
@@ -104,15 +118,13 @@ def get_param_value_with_inheritance(param_id, grupo_id, escenario_id):
     2. escenario padre (recursivo)
     3. valores_base
     """
-
     current_id = escenario_id
 
     while current_id:
         row = query_one(
             """
-            SELECT valor, escenario_padre_id
+            SELECT ve.valor
             FROM valores_escenario ve
-            JOIN escenarios e ON e.id = ve.escenario_id
             WHERE ve.parametro_id = %s
               AND ve.grupo_id = %s
               AND ve.escenario_id = %s
@@ -124,7 +136,6 @@ def get_param_value_with_inheritance(param_id, grupo_id, escenario_id):
         if row and row["valor"] is not None:
             return float(row["valor"])
 
-        # subir al padre
         parent = query_one(
             "SELECT escenario_padre_id FROM escenarios WHERE id = %s",
             (current_id,)
@@ -132,41 +143,42 @@ def get_param_value_with_inheritance(param_id, grupo_id, escenario_id):
 
         current_id = parent["escenario_padre_id"] if parent else None
 
-    # fallback a base
     base = query_one(
         """
         SELECT valor
         FROM valores_base
         WHERE parametro_id = %s
           AND grupo_id = %s
+        LIMIT 1
         """,
         (param_id, grupo_id)
     )
 
     return float(base["valor"]) if base and base["valor"] is not None else 0.0
 
+
 def load_parameters_with_values(scenario_id=None):
     rows = query_all(
         """
         SELECT p.id AS parametro_id,
-           p.codigo,
-           p.modulo,
-           p.descripcion,
-           p.unidad,
-           g.id AS grupo_id,
-           g.codigo AS grupo_codigo,
-           g.nombre AS grupo_nombre,
-           b.valor AS valor_base,
-           v.valor AS valor_escenario
+               p.codigo,
+               p.modulo,
+               p.descripcion,
+               p.unidad,
+               g.id AS grupo_id,
+               g.codigo AS grupo_codigo,
+               g.nombre AS grupo_nombre,
+               b.valor AS valor_base,
+               v.valor AS valor_escenario
         FROM definiciones_parametros p
         CROSS JOIN grupos_tarifarios g
         LEFT JOIN valores_base b
-           ON b.parametro_id = p.id
-           AND b.grupo_id = g.id
+               ON b.parametro_id = p.id
+              AND b.grupo_id = g.id
         LEFT JOIN valores_escenario v
-           ON v.parametro_id = p.id
-           AND v.grupo_id = g.id
-           AND v.escenario_id = %s
+               ON v.parametro_id = p.id
+              AND v.grupo_id = g.id
+              AND v.escenario_id = %s
         ORDER BY p.modulo, p.id, g.orden
         """,
         (scenario_id if scenario_id else -1,)
@@ -197,11 +209,14 @@ def load_parameters_with_values(scenario_id=None):
 
         base_value = float(r["valor_base"]) if r["valor_base"] is not None else 0.0
 
-        effective = get_param_value_with_inheritance(
-            r["parametro_id"],
-            r["grupo_id"],
-            scenario_id
-        )
+        if scenario_id:
+            effective = get_param_value_with_inheritance(
+                r["parametro_id"],
+                r["grupo_id"],
+                scenario_id
+            )
+        else:
+            effective = base_value
 
         grouped[modulo][codigo]["values"][grupo_codigo] = effective
         grouped[modulo][codigo]["base_values"][grupo_codigo] = base_value
