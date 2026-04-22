@@ -97,28 +97,76 @@ def inject_globals():
 def load_groups():
     return query_all("SELECT * FROM grupos_tarifarios ORDER BY orden")
 
+def get_param_value_with_inheritance(param_id, grupo_id, escenario_id):
+    """
+    Busca el valor de un parámetro en:
+    1. escenario actual
+    2. escenario padre (recursivo)
+    3. valores_base
+    """
+
+    current_id = escenario_id
+
+    while current_id:
+        row = query_one(
+            """
+            SELECT valor, escenario_padre_id
+            FROM valores_escenario ve
+            JOIN escenarios e ON e.id = ve.escenario_id
+            WHERE ve.parametro_id = %s
+              AND ve.grupo_id = %s
+              AND ve.escenario_id = %s
+            LIMIT 1
+            """,
+            (param_id, grupo_id, current_id)
+        )
+
+        if row and row["valor"] is not None:
+            return float(row["valor"])
+
+        # subir al padre
+        parent = query_one(
+            "SELECT escenario_padre_id FROM escenarios WHERE id = %s",
+            (current_id,)
+        )
+
+        current_id = parent["escenario_padre_id"] if parent else None
+
+    # fallback a base
+    base = query_one(
+        """
+        SELECT valor
+        FROM valores_base
+        WHERE parametro_id = %s
+          AND grupo_id = %s
+        """,
+        (param_id, grupo_id)
+    )
+
+    return float(base["valor"]) if base and base["valor"] is not None else 0.0
 
 def load_parameters_with_values(scenario_id=None):
     rows = query_all(
         """
         SELECT p.id AS parametro_id,
-               p.codigo,
-               p.modulo,
-               p.descripcion,
-               p.unidad,
-               g.codigo AS grupo_codigo,
-               g.nombre AS grupo_nombre,
-               b.valor AS valor_base,
-               v.valor AS valor_escenario
+           p.codigo,
+           p.modulo,
+           p.descripcion,
+           p.unidad,
+           g.id AS grupo_id,
+           g.codigo AS grupo_codigo,
+           g.nombre AS grupo_nombre,
+           b.valor AS valor_base,
+           v.valor AS valor_escenario
         FROM definiciones_parametros p
         CROSS JOIN grupos_tarifarios g
         LEFT JOIN valores_base b
-               ON b.parametro_id = p.id
-              AND b.grupo_id = g.id
+           ON b.parametro_id = p.id
+           AND b.grupo_id = g.id
         LEFT JOIN valores_escenario v
-               ON v.parametro_id = p.id
-              AND v.grupo_id = g.id
-              AND v.escenario_id = %s
+           ON v.parametro_id = p.id
+           AND v.grupo_id = g.id
+           AND v.escenario_id = %s
         ORDER BY p.modulo, p.id, g.orden
         """,
         (scenario_id if scenario_id else -1,)
@@ -149,12 +197,11 @@ def load_parameters_with_values(scenario_id=None):
 
         base_value = float(r["valor_base"]) if r["valor_base"] is not None else 0.0
 
-        if r["valor_escenario"] is not None:
-            effective = float(r["valor_escenario"])
-        elif r["valor_base"] is not None:
-            effective = float(r["valor_base"])
-        else:
-            effective = 0.0
+        effective = get_param_value_with_inheritance(
+            r["parametro_id"],
+            r["grupo_id"],
+            scenario_id
+        )
 
         grouped[modulo][codigo]["values"][grupo_codigo] = effective
         grouped[modulo][codigo]["base_values"][grupo_codigo] = base_value
@@ -383,50 +430,141 @@ def index():
 
         FROM escenarios e
         WHERE e.activo = 1
-        ORDER BY e.es_base DESC, e.creado_en DESC, e.id DESC
+        ORDER BY
+            e.es_base DESC,
+            e.empresa_nombre ASC,
+            e.periodo_anio ASC,
+            e.periodo_mes ASC,
+            e.creado_en DESC,
+            e.id DESC
         """
     )
 
     groups = load_groups()
-    # El valor original antes del cambio para mostrar host del mysql
-    #return render_template("index.html", escenarios=escenarios, groups=groups)
-    return render_template("index.html",escenarios=escenarios,groups=groups,mysql_host=MYSQL_HOST)
+
+    escenarios_padre = query_all(
+        """
+        SELECT id, nombre, grupo_codigo, tipo_escenario, empresa_nombre, periodo_anio, periodo_mes
+        FROM escenarios
+        WHERE activo = 1
+          AND es_base = 0
+        ORDER BY empresa_nombre ASC, periodo_anio ASC, periodo_mes ASC, id ASC
+        """
+    )
+
+    return render_template(
+        "index.html",
+        escenarios=escenarios,
+        groups=groups,
+        escenarios_padre=escenarios_padre,
+        mysql_host=MYSQL_HOST
+    )
     
+
 @app.route("/escenario/nuevo", methods=["POST"])
 @login_required
+
+
+
 def nuevo_escenario():
     nombre = request.form.get("nombre", "").strip()
     descripcion = request.form.get("descripcion", "").strip() or None
-    grupo_codigo = request.form.get("grupo_codigo", "").strip() or None
+    grupo_codigo = request.form.get("grupo_codigo", "").strip()
+    tipo_escenario = request.form.get("tipo_escenario", "empresa").strip()
 
-    if not nombre:
-        flash("Ingresá un nombre para el escenario.", "error")
-        return redirect(url_for("index"))
+    escenario_padre_id = request.form.get("escenario_padre_id")
+    empresa_nombre = request.form.get("empresa_nombre", "").strip() or None
+    periodo_anio = request.form.get("periodo_anio")
+    periodo_mes = request.form.get("periodo_mes")
 
     if not grupo_codigo:
-        flash("Seleccioná un grupo tarifario para el escenario.", "error")
+        flash("Seleccioná un grupo tarifario.", "error")
         return redirect(url_for("index"))
+
+    if tipo_escenario not in ("general", "empresa", "mensual"):
+        flash("Tipo de escenario inválido.", "error")
+        return redirect(url_for("index"))
+
+    try:
+        escenario_padre_id = int(escenario_padre_id) if escenario_padre_id else None
+    except Exception:
+        escenario_padre_id = None
+
+    if tipo_escenario == "empresa":
+        if not empresa_nombre:
+            flash("Ingresá el nombre de la empresa.", "error")
+            return redirect(url_for("index"))
+        if not nombre:
+            nombre = f"{empresa_nombre} - base"
+
+    if tipo_escenario == "mensual":
+        if not escenario_padre_id:
+            flash("Para un escenario mensual tenés que indicar un escenario padre.", "error")
+            return redirect(url_for("index"))
+
+        if not periodo_anio or not periodo_mes:
+            flash("Ingresá año y mes del escenario mensual.", "error")
+            return redirect(url_for("index"))
+
+        try:
+            periodo_anio = int(periodo_anio)
+            periodo_mes = int(periodo_mes)
+        except Exception:
+            flash("Año o mes inválido.", "error")
+            return redirect(url_for("index"))
+
+        if periodo_mes < 1 or periodo_mes > 12:
+            flash("El mes debe estar entre 1 y 12.", "error")
+            return redirect(url_for("index"))
+
+        if not empresa_nombre:
+            padre = query_one(
+                "SELECT empresa_nombre, nombre FROM escenarios WHERE id=%s",
+                (escenario_padre_id,)
+            )
+            if padre:
+                empresa_nombre = padre.get("empresa_nombre") or padre.get("nombre")
+
+        if not nombre:
+            nombre = build_monthly_name(empresa_nombre, periodo_anio, periodo_mes)
+
+    if tipo_escenario == "general" and not nombre:
+        nombre = "Escenario general"
 
     try:
         existe_base = query_one(
             "SELECT id FROM escenarios WHERE es_base = 1 AND activo = 1 LIMIT 1"
         )
 
-        es_base = 0 if existe_base else 1
+        es_base = 0
+        if not existe_base and tipo_escenario == "general":
+            es_base = 1
 
         execute(
             """
-            INSERT INTO escenarios (nombre, descripcion, grupo_codigo, es_base, activo)
-            VALUES (%s, %s, %s, %s, 1)
+            INSERT INTO escenarios
+            (
+                nombre, descripcion, grupo_codigo, escenario_padre_id,
+                tipo_escenario, empresa_nombre, periodo_anio, periodo_mes,
+                es_base, activo
+            )
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,1)
             """,
-            (nombre, descripcion, grupo_codigo, es_base)
+            (
+                nombre,
+                descripcion,
+                grupo_codigo,
+                escenario_padre_id,
+                tipo_escenario,
+                empresa_nombre,
+                periodo_anio if periodo_anio else None,
+                periodo_mes if periodo_mes else None,
+                es_base,
+            )
         )
         commit()
 
-        if es_base:
-            flash("Escenario base creado.", "ok")
-        else:
-            flash("Escenario creado.", "ok")
+        flash("Escenario creado.", "ok")
 
     except Exception as exc:
         rollback()
@@ -587,6 +725,19 @@ def escenario(scenario_id):
         ordered_results=ordered_results,
         impact_summary=impact_summary,
     )
+def build_next_month_defaults(escenario):
+    if escenario.get("periodo_anio") and escenario.get("periodo_mes"):
+        next_anio, next_mes = next_period(escenario["periodo_anio"], escenario["periodo_mes"])
+    else:
+        next_anio, next_mes = None, None
+
+    return {
+        "escenario_padre_id": escenario["id"],
+        "grupo_codigo": escenario.get("grupo_codigo"),
+        "empresa_nombre": escenario.get("empresa_nombre"),
+        "periodo_anio": next_anio,
+        "periodo_mes": next_mes,
+    }
 
 @app.route("/escenario/<int:scenario_id>/exportar_excel")
 @login_required

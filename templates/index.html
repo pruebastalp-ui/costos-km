@@ -180,31 +180,19 @@
 </section>
 
 <section class="card">
-  <h2>Nuevo escenario</h2>
+  <h2>Nuevo escenario empresa</h2>
   <form method="post" action="{{ url_for('nuevo_escenario') }}">
+    <input type="hidden" name="tipo_escenario" value="empresa">
+
     <div class="form-grid">
       <div class="form-row">
-        <label for="nombre">Nombre</label>
-        <input
-          type="text"
-          id="nombre"
-          name="nombre"
-          placeholder="Ej.: Aumento combustible enero"
-          required
-        >
+        <label for="empresa_nombre">Empresa</label>
+        <input type="text" id="empresa_nombre" name="empresa_nombre" required>
       </div>
 
       <div class="form-row">
-        <label for="descripcion">Descripción</label>
-        <textarea
-          id="descripcion"
-          name="descripcion"
-          placeholder="Detalle breve del escenario"
-        ></textarea>
-      </div>
-      <div class="form-row">
-        <label for="grupo_codigo">Grupo tarifario</label>
-        <select id="grupo_codigo" name="grupo_codigo" required>
+        <label for="grupo_codigo_empresa">Grupo tarifario</label>
+        <select id="grupo_codigo_empresa" name="grupo_codigo" required>
           <option value="">Seleccionar...</option>
           {% for g in groups %}
             <option value="{{ g.codigo }}">{{ g.codigo }}</option>
@@ -212,10 +200,19 @@
         </select>
       </div>
 
+      <div class="form-row">
+        <label for="nombre_empresa">Nombre del escenario</label>
+        <input type="text" id="nombre_empresa" name="nombre" placeholder="Se completa solo si lo dejás vacío">
+      </div>
+
+      <div class="form-row">
+        <label for="descripcion_empresa">Descripción</label>
+        <textarea id="descripcion_empresa" name="descripcion"></textarea>
+      </div>
     </div>
 
     <div class="actions">
-      <button type="submit" class="btn btn-primary">Crear escenario</button>
+      <button type="submit" class="btn btn-primary">Crear escenario empresa</button>
     </div>
   </form>
 </section>
@@ -310,6 +307,81 @@
       No hay escenarios activos todavía.
     </div>
   {% endif %}
+</section>
+
+<section class="card">
+  <h2>Nuevo escenario mensual</h2>
+
+// agregue de acá******************************
+<p><strong>Tipo:</strong> {{ esc.tipo_escenario or "-" }}</p>
+<p><strong>Empresa:</strong> {{ esc.empresa_nombre or "-" }}</p>
+<p><strong>Grupo:</strong> {{ esc.grupo_codigo or "-" }}</p>
+
+{% if esc.periodo_anio and esc.periodo_mes %}
+<p><strong>Período:</strong> {{ esc.periodo_mes }}/{{ esc.periodo_anio }}</p>
+{% endif %}
+
+{% if esc.escenario_padre_id %}
+<p><strong>Padre:</strong> #{{ esc.escenario_padre_id }}</p>
+{% endif %}
+// hasta aca************************************
+
+  <form method="post" action="{{ url_for('nuevo_escenario') }}">
+    <input type="hidden" name="tipo_escenario" value="mensual">
+
+    <div class="form-grid">
+      <div class="form-row">
+        <label for="escenario_padre_id">Escenario padre</label>
+        <select id="escenario_padre_id" name="escenario_padre_id" required>
+          <option value="">Seleccionar...</option>
+          {% for ep in escenarios_padre %}
+            <option value="{{ ep.id }}">
+              {{ ep.nombre }}{% if ep.grupo_codigo %} ({{ ep.grupo_codigo }}){% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-row">
+        <label for="grupo_codigo_mensual">Grupo tarifario</label>
+        <select id="grupo_codigo_mensual" name="grupo_codigo" required>
+          <option value="">Seleccionar...</option>
+          {% for g in groups %}
+            <option value="{{ g.codigo }}">{{ g.codigo }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-row">
+        <label for="empresa_nombre_mensual">Empresa</label>
+        <input type="text" id="empresa_nombre_mensual" name="empresa_nombre" placeholder="Opcional, se hereda del padre">
+      </div>
+
+      <div class="form-row">
+        <label for="periodo_anio">Año</label>
+        <input type="number" id="periodo_anio" name="periodo_anio" min="2020" max="2100" required>
+      </div>
+
+      <div class="form-row">
+        <label for="periodo_mes">Mes</label>
+        <input type="number" id="periodo_mes" name="periodo_mes" min="1" max="12" required>
+      </div>
+
+      <div class="form-row">
+        <label for="nombre_mensual">Nombre del escenario</label>
+        <input type="text" id="nombre_mensual" name="nombre" placeholder="Se genera solo si lo dejás vacío">
+      </div>
+
+      <div class="form-row">
+        <label for="descripcion_mensual">Descripción</label>
+        <textarea id="descripcion_mensual" name="descripcion"></textarea>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button type="submit" class="btn btn-primary">Crear escenario mensual</button>
+    </div>
+  </form>
 </section>
 
 {% endblock %}
